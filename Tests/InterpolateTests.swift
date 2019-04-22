@@ -6,6 +6,11 @@
 //  Copyright © 2016 Roy Marmelstein. All rights reserved.
 //
 
+#if os(macOS)
+import AppKit
+#elseif os(iOS) || os(tvOS)
+import UIKit
+#endif
 import XCTest
 @testable import Interpolate
 
