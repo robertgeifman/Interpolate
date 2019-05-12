@@ -3,7 +3,7 @@
 //  LoopyAnimation
 //
 //  Created by Robert Geifman on 23/12/18.
-//	Copyright © 2018 Robert Geifman. All rights reserved.
+//  Copyright © 2018 Robert Geifman. All rights reserved.
 //
 
 #if os(OSX)
