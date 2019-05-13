@@ -14,7 +14,6 @@
 		E10CAC3F226E01430019392C /* BasicInterpolation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10CAC3B226E01430019392C /* BasicInterpolation.swift */; };
 		E10CAC40226E01430019392C /* SpringInterpolation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10CAC3C226E01430019392C /* SpringInterpolation.swift */; };
 		E1838C2C226DA48F006307C3 /* Interpolate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1838C22226DA48F006307C3 /* Interpolate.framework */; };
-		E1BF73B4226E03EC00E8BC8F /* DisplayLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BF73B3226E03EC00E8BC8F /* DisplayLink.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,7 +38,6 @@
 		E1838C26226DA48F006307C3 /* Interpolate.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Interpolate.plist; sourceTree = "<group>"; };
 		E1838C2B226DA48F006307C3 /* InterpolateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = InterpolateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1838C32226DA48F006307C3 /* InterpolateTests.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = InterpolateTests.plist; sourceTree = "<group>"; };
-		E1BF73B3226E03EC00E8BC8F /* DisplayLink.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DisplayLink.swift; sourceTree = "<group>"; };
 		E1E6BC18226DB85A0058E872 /* .swiftlint.yml */ = {isa = PBXFileReference; lastKnownFileType = text; path = .swiftlint.yml; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -100,7 +98,6 @@
 				E10CAC39226E01430019392C /* Interpolate.swift */,
 				E10CAC3B226E01430019392C /* BasicInterpolation.swift */,
 				E10CAC3C226E01430019392C /* SpringInterpolation.swift */,
-				E1BF73B3226E03EC00E8BC8F /* DisplayLink.swift */,
 			);
 			path = Source;
 			sourceTree = "<group>";
@@ -252,7 +249,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E1BF73B4226E03EC00E8BC8F /* DisplayLink.swift in Sources */,
 				E10CAC3F226E01430019392C /* BasicInterpolation.swift in Sources */,
 				E10CAC3D226E01430019392C /* Interpolate.swift in Sources */,
 				E10CAC3E226E01430019392C /* Interpolatable.swift in Sources */,

@@ -8,9 +8,10 @@
 
 #if os(macOS)
 import AppKit
-#elseif os(iOS) || os(tvOS)
+#else
 import UIKit
 #endif
+import QuartzCore
 
 /// Basic interpolation function.
 public enum BasicInterpolation: InterpolationFunction {
@@ -22,27 +23,23 @@ public enum BasicInterpolation: InterpolationFunction {
 	case easeOut
 	/// Ease in out interpolation.
 	case easeInOut
-	
-	/**
-	 Apply interpolation function
-	 
-	 - parameter progress: Input progress value
-	 
-	 - returns: Adjusted progress value with interpolation function. 
-	 */
+
+	/// Apply interpolation function
+	/// - parameter progress: Input progress value
+	/// - returns: Adjusted progress value with interpolation function.
 	public func apply(_ progress: CGFloat) -> CGFloat {
 		switch self {
 		case .linear:
 			return progress
 		case .easeIn:
-			return progress * progress * progress
+			return progress*progress*progress
 		case .easeOut:
-			return (progress - 1) * (progress - 1) * (progress - 1) + 1.0
+			return (progress - 1)*(progress - 1)*(progress - 1) + 1.0
 		case .easeInOut:
 			if progress < 0.5 {
-				return 4.0 * progress * progress * progress
+				return 4.0*progress*progress*progress
 			} else {
-				let adjustment = ( 2 * progress - 2)
+				let adjustment = (2*progress - 2)
 				return 0.5 * adjustment * adjustment * adjustment + 1.0
 			}
 		}

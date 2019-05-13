@@ -8,38 +8,42 @@
 
 #if os(macOS)
 import AppKit
-#elseif os(iOS) || os(tvOS)
+#else
 import UIKit
 #endif
 import QuartzCore
+import SceneKit
 
 /// Interpolatable protocol. Requires implementation of a vectorize function.
 public protocol Interpolatable {
-	/// Vectorizes the type and returns and IPValue
+	 /// Vectorizes the type and returns and IPValue
 	func vectorize() -> IPValue
 }
 
 /// Supported interpolatable types.
-public enum InterpolatableType {
+public enum InterpolatableType: Int {
 	case caTransform3D
 	case cgAffineTransform
 	case cgFloat
 	case cgPoint
 	case cgRect
 	case cgSize
-	case colorMonochrome
-	case colorRGB// (preferHSB: Bool)
+	case cgVector
 	case colorHSB
-#if os(macOS)
-	case colorCMYK
-#endif
-	case double
-	case int
-	case number
+	case colorMonochrome
+	case colorRGB
+	case range
+	case integer
 	case edgeInsets
+	case scnVector3
+	case scnVector4
+#if !os(macOS)
+	case offset
+#endif
+	case nsNumber
+	case double
+	case float
 }
-
-// MARK: Interpolatable implementation
 
 extension CATransform3D: Interpolatable {
 	public func vectorize() -> IPValue {
@@ -77,61 +81,80 @@ extension CGSize: Interpolatable {
 	}
 }
 
+extension CGVector: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .cgVector, vectors: [dx, dy])
+	}
+}
+
+extension SCNVector3: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .scnVector3, vectors: [x, y, z])
+	}
+}
+
+extension SCNVector4: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .scnVector4, vectors: [x, y, z, w])
+	}
+}
+
+extension NSRange: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .range, vectors: [CGFloat(location), CGFloat(length)])
+	}
+}
+
+extension Int: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .integer, vectors: [CGFloat(self)])
+	}
+}
+
 extension Double: Interpolatable {
 	public func vectorize() -> IPValue {
 		return IPValue(type: .double, vectors: [CGFloat(self)])
 	}
 }
 
-extension Int: Interpolatable {
+extension Float: Interpolatable {
 	public func vectorize() -> IPValue {
-		return IPValue(type: .int, vectors: [CGFloat(self)])
+		return IPValue(type: .float, vectors: [CGFloat(self)])
 	}
 }
 
 extension NSNumber: Interpolatable {
 	public func vectorize() -> IPValue {
-		return IPValue(type: .number, vectors: [CGFloat(truncating: self)])
+		return IPValue(type: .nsNumber, vectors: [CGFloat(truncating: self)])
+	}
+}
+
+extension CGColor: Interpolatable {
+	public func vectorize() -> IPValue {
+		if let colorSpace = colorSpace, colorSpace.model == .rgb, let components = components {
+			return IPValue(type: .colorRGB, vectors: components)
+		} else if let colorSpace = colorSpace, colorSpace.model == .monochrome, let components = components {
+			return IPValue(type: .colorMonochrome, vectors: components)
+		}
+		fatalError()
 	}
 }
 
 #if os(macOS)
 extension NSColor: Interpolatable {
 	public func vectorize() -> IPValue {
-		var components = [CGFloat](repeating: 0, count: numberOfComponents)
-		getComponents(&components)
+		if colorSpace.colorSpaceModel == .rgb {
+			var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
 
-		switch colorSpace.colorSpaceModel {
-		case .gray:
-			return IPValue(type: .colorMonochrome, vectors: components)
-		case .rgb:
-			return IPValue(type: .colorRGB, vectors: components)
-		case .cmyk:
-			return IPValue(type: .colorCMYK, vectors: components)
-		default:
-			fatalError("Unsupported color space model \(colorSpace.colorSpaceModel) in NSColor.vectorize()")
+			getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+			return IPValue(type: .colorRGB, vectors: [red, green, blue, alpha])
+		} else if colorSpace.colorSpaceModel == .gray {
+			var white: CGFloat = 0, alpha: CGFloat = 0
+
+			getWhite(&white, alpha: &alpha)
+			return IPValue(type: .colorMonochrome, vectors: [white, alpha])
 		}
-	}
-
-	public func vectorize(preferHSB: Bool) -> IPValue {
-		var components = [CGFloat](repeating: 0, count: numberOfComponents)
-		getComponents(&components)
-
-		switch colorSpace.colorSpaceModel {
-		case .gray:
-			return IPValue(type: .colorMonochrome, vectors: components)
-		case .rgb:
-			if preferHSB {
-				var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-				getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-				return IPValue(type: .colorHSB, vectors: [hue, saturation, brightness, alpha])
-			}
-			return IPValue(type: .colorRGB, vectors: components)
-		case .cmyk:
-			return IPValue(type: .colorCMYK, vectors: components)
-		default:
-			fatalError("Unsupported color space model \(colorSpace.colorSpaceModel) in NSColor.vectorize()")
-		}
+		fatalError()
 	}
 }
 
@@ -140,21 +163,25 @@ extension NSEdgeInsets: Interpolatable {
 		return IPValue(type: .edgeInsets, vectors: [top, left, bottom, right])
 	}
 }
-#elseif os(iOS) || os(tvOS)
+#else
 extension UIColor: Interpolatable {
 	public func vectorize() -> IPValue {
 		var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+
 		if getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
 			return IPValue(type: .colorRGB, vectors: [red, green, blue, alpha])
 		}
-		
+
 		var white: CGFloat = 0
+
 		if getWhite(&white, alpha: &alpha) {
 			return IPValue(type: .colorMonochrome, vectors: [white, alpha])
 		}
-		
+
 		var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
+
 		getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+
 		return IPValue(type: .colorHSB, vectors: [hue, saturation, brightness, alpha])
 	}
 }
@@ -164,24 +191,29 @@ extension UIEdgeInsets: Interpolatable {
 		return IPValue(type: .edgeInsets, vectors: [top, left, bottom, right])
 	}
 }
-#endif
 
+extension UIOffset: Interpolatable {
+	public func vectorize() -> IPValue {
+		return IPValue(type: .offset, vectors: [horizontal, vertical])
+	}
+}
+#endif //
 /// IPValue class. Contains a vectorized version of an Interpolatable type.
-open class IPValue {
+final public class IPValue {
 	let type: InterpolatableType
-	var vectors: [CGFloat]
-	
-	init(value: IPValue) {
+	final var vectors: [CGFloat]
+
+	public init(value: IPValue) {
 		self.vectors = value.vectors
 		self.type = value.type
 	}
-	
-	init (type: InterpolatableType, vectors: [CGFloat]) {
+
+	public init (type: InterpolatableType, vectors: [CGFloat]) {
 		self.vectors = vectors
 		self.type = type
 	}
-	
-	func toInterpolatable() -> Interpolatable {
+
+	final public func toInterpolatable() -> Interpolatable {
 		switch type {
 		case .caTransform3D:
 			return CATransform3D(m11: vectors[0], m12: vectors[1], m13: vectors[2], m14: vectors[3], m21: vectors[4], m22: vectors[5], m23: vectors[6], m24: vectors[7], m31: vectors[8], m32: vectors[9], m33: vectors[10], m34: vectors[11], m41: vectors[12], m42: vectors[13], m43: vectors[14], m44: vectors[15])
@@ -195,23 +227,27 @@ open class IPValue {
 			return CGRect(x: vectors[0], y: vectors[1], width: vectors[2], height: vectors[3])
 		case .cgSize:
 			return CGSize(width: vectors[0], height: vectors[1])
+		case .cgVector:
+			return CGVector(dx: vectors[0], dy: vectors[1])
+		case .range:
+			return NSRange(location: Int(vectors[0]), length: Int(vectors[1]))
+		case .nsNumber:
+			return NSNumber(value: Double(vectors[0]))
 		case .double:
 			return Double(vectors[0])
-		case .int:
+		case .float:
+			return Float(vectors[0])
+		case .integer:
 			return Int(vectors[0])
-		case .number:
-			return NSNumber(value: Double(vectors[0]))
 #if os(macOS)
-		case .colorMonochrome:
-			return NSColor(calibratedWhite: vectors[0], alpha: vectors[1])
 		case .colorRGB:
-			return NSColor(calibratedRed: vectors[0], green: vectors[1], blue: vectors[2], alpha: vectors[3])
+			return NSColor(red: vectors[0], green: vectors[1], blue: vectors[2], alpha: vectors[3])
+		case .colorMonochrome:
+			return NSColor(white: vectors[0], alpha: vectors[1])
 		case .colorHSB:
-			return NSColor(calibratedHue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
-		case .colorCMYK:
-			return NSColor(deviceCyan: vectors[0], magenta: vectors[1], yellow: vectors[2], black: vectors[3], alpha: vectors[4])
+			return NSColor(hue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
 		case .edgeInsets:
-			return NSEdgeInsets(top: vectors[0], left: vectors[1], bottom: vectors[2], right: vectors[3])
+			return NSEdgeInsetsMake(vectors[0], vectors[1], vectors[2], vectors[3])
 #else
 		case .colorRGB:
 			return UIColor(red: vectors[0], green: vectors[1], blue: vectors[2], alpha: vectors[3])
@@ -220,8 +256,17 @@ open class IPValue {
 		case .colorHSB:
 			return UIColor(hue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
 		case .edgeInsets:
-			return UIEdgeInsets(top: vectors[0], left: vectors[1], bottom: vectors[2], right: vectors[3])
-#endif
+			return UIEdgeInsetsMake(vectors[0], vectors[1], vectors[2], vectors[3])
+		case .offset:
+			return UIOffset(horizontal: vectors[0], vertical: vectors[1])
+#endif // os(macOS)
+		case .scnVector3:
+			return SCNVector3(x: vectors[0], y: vectors[1], z: vectors[2])
+		case .scnVector4:
+			return SCNVector4(x: vectors[0], y: vectors[1], z: vectors[2], w: vectors[4])
+
 		}
 	}
 }
+
+
