@@ -24,10 +24,10 @@ public protocol Interpolatable {
 /// Supported interpolatable types.
 public enum InterpolatableType {
 	public enum ColorModel {
-	case monochrome, rgb, hsb
+	case hsb
 #if os(macOS)
-	// case cmyk
-#endif
+	case cmyk
+#endif // os(macOS)
 	}
 	case integer
 	case float
@@ -95,13 +95,13 @@ extension CGVector: Interpolatable {
 
 extension SCNVector3: Interpolatable {
 	public func vectorize() -> IPValue {
-		return IPValue(type: .scnVector3, vectors: [x, y, z])
+		return IPValue(type: .scnVector3, vectors: [CGFloat(x), CGFloat(y), CGFloat(z)])
 	}
 }
 
 extension SCNVector4: Interpolatable {
 	public func vectorize() -> IPValue {
-		return IPValue(type: .scnVector4, vectors: [x, y, z, w])
+		return IPValue(type: .scnVector4, vectors: [CGFloat(x), CGFloat(y), CGFloat(z), CGFloat(w)])
 	}
 }
 
@@ -157,69 +157,132 @@ extension Offset: Interpolatable {
 
 ////////////////////////////////////////////////////////////
 // MARK:- Color
-extension CGColor: Interpolatable {
-	public func vectorize(using colorModel: InterpolatableType.ColorModel) -> IPValue {
-		if let colorSpace = colorSpace, colorSpace.model == .rgb, let components = components {
-			return IPValue(type: .color(.rgb), vectors: components)
-		} else if let colorSpace = colorSpace, colorSpace.model == .monochrome, let components = components {
-			return IPValue(type: .color(.monochrome), vectors: components)
+extension CGColor {
+	// borrowed from GNUStep implementation of NSColor
+	public static func rgbFrom(hue: CGFloat, saturation: CGFloat, brightness: CGFloat) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+		let hue = min(1, max(0, hue))
+		let saturation = min(1, max(0, saturation))
+		let brightness = min(1, max(0, brightness))
+
+		let intensity = Int(hue * 6)
+		let factor = CGFloat(Int(hue * 6) - intensity)
+		let m = brightness * (1 - saturation)
+		let n = brightness * (1 - saturation * factor)
+		let k = m - n + brightness
+		switch intensity {
+		case 1: return (red: n, green: brightness, blue: m)
+		case 2: return (red: m, green: brightness, blue: k)
+		case 3: return (red: m, green: n, blue: brightness)
+		case 4: return (red: k, green: m, blue: brightness)
+		case 5: return (red: brightness, green: m, blue: n)
+		default: return (red: brightness, green: k, blue: m)
+		}
+	}
+
+	public static func rgbFrom(white: CGFloat) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+		return (red: white, green: white, blue: white)
+	}
+
+	public static func hsbFrom(red: CGFloat, green: CGFloat, blue: CGFloat) -> (hue: CGFloat, saturation: CGFloat, brightness: CGFloat) {
+		let r = min(1, max(0, red))
+		let g = min(1, max(0, green))
+		let b = min(1, max(0, blue))
+
+		if r == g, r == b {
+			return (hue: 0, saturation: 0, brightness: r)
 		}
 
-		fatalError("Error vectorizing CGColor \(self)")
+		var brightness = (r > g ? r : g)
+		brightness = (b > brightness ? b : brightness)
+		var temp = (r < g ? r : g)
+		temp = (b < temp ? b : temp)
+		let diff = brightness - temp
+
+		var hue: CGFloat
+		if brightness == r { hue = (g - b)/diff }
+		else if brightness == g { hue = (b - r)/diff + 2 }
+		else { hue = (r - g)/diff + 4 }
+
+		if hue < 0 { hue += 6 }
+
+		return (hue: hue/6, saturation: diff/brightness, brightness: brightness)
+	}
+
+	public static func hsbFrom(white: CGFloat) -> (hue: CGFloat, saturation: CGFloat, brightness: CGFloat) {
+		return (hue: 0, saturation: 0, brightness: white)
+	}
+
+	internal static func hsbComponentsFrom(components: [CGFloat]?) -> [CGFloat]? {
+		guard let components = components else { return nil }
+		if components.count == 4 {
+			let r = min(1, max(0, components[0]))
+			let g = min(1, max(0, components[1]))
+			let b = min(1, max(0, components[2]))
+
+			if r == g, r == b {
+				return [0, 0, r, components[3]]
+			}
+
+			var brightness = (r > g ? r : g)
+			brightness = (b > brightness ? b : brightness)
+			var temp = (r < g ? r : g)
+			temp = (b < temp ? b : temp)
+			let diff = brightness - temp
+
+			var hue: CGFloat
+			if brightness == r { hue = (g - b)/diff }
+			else if brightness == g { hue = (b - r)/diff + 2 }
+			else { hue = (r - g)/diff + 4 }
+
+			if hue < 0 { hue += 6 }
+
+			return [hue/6, diff/brightness, brightness, components[3]]
+		} else if components.count == 2 {
+			return [0, 0, components[0], components[1]]
+		}
+		return nil
 	}
 
 	public func vectorize() -> IPValue {
-		return vectorize(using: .hsb)
+		if let colorSpace = colorSpace {
+			if colorSpace.model == .rgb || colorSpace.model == .monochrome {
+				if let components = CGColor.hsbComponentsFrom(components: self.components) {
+					return IPValue(type: .color(.hsb), vectors: components)
+				}
+			}
+#if os(macOS)
+			if colorSpace.model == .cmyk, let components = components {
+				return IPValue(type: .color(.cmyk), vectors: components)
+			}
+#endif
+		}
+		assertionFailure("Error vectorizing CGolor \(self)")
+		return IPValue(type: .color(.hsb), vectors: [0, 1, 1, 0.5]) // returning red 50% transparent color for debugging purposes
 	}
 }
 
 #if os(macOS)
 extension NSColor: Interpolatable {
-	public func vectorize(using colorModel: InterpolatableType.ColorModel) -> IPValue {
-		if colorSpace.colorSpaceModel == .rgb {
-			var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-
-			getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-			return IPValue(type: .color(.rgb), vectors: [red, green, blue, alpha])
-		} else if colorSpace.colorSpaceModel == .gray {
-			var white: CGFloat = 0, alpha: CGFloat = 0
-
-			getWhite(&white, alpha: &alpha)
-			return IPValue(type: .color(.monochrome), vectors: [white, alpha])
-		}
-		
-		fatalError("Error vectorizing NSColor \(self)")
-	}
-
 	public func vectorize() -> IPValue {
-		return vectorize(using: .hsb)
+		var components = [CGFloat](repeating: 0, count: numberOfComponents)
+		getComponents(&components)
+		if colorSpace.colorSpaceModel == .rgb || colorSpace.colorSpaceModel == .gray,
+			let components = CGColor.hsbComponentsFrom(components: components) {
+			return IPValue(type: .color(.hsb), vectors: components)
+		} else if colorSpace.colorSpaceModel == .cmyk {
+			return IPValue(type: .color(.cmyk), vectors: components)
+		}
+		assertionFailure("Error vectorizing NSColor \(self)")
+		return IPValue(type: .color(.hsb), vectors: [0, 1, 1, 0.5]) // returning red 50% transparent color for debugging purposes
 	}
 }
 #else
 extension UIColor: Interpolatable {
-	public func vectorize(using colorModel: InterpolatableType.ColorModel) -> IPValue {
-		var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-		if getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-			return IPValue(type: .color(.rgb), vectors: [red, green, blue, alpha])
-		}
-
-		var white: CGFloat = 0
-		if getWhite(&white, alpha: &alpha) {
-			return IPValue(type: .color(.monochrome), vectors: [white, alpha])
-		}
-
-		var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
-		getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-
-		return IPValue(type: .color(.hsb), vectors: [hue, saturation, brightness, alpha])
-	}
-
 	public func vectorize() -> IPValue {
-		return vectorize(using: .hsb)
+		return cgColor.vectorize()
 	}
 }
 #endif
-
 ////////////////////////////////////////////////////////////
 /// IPValue class. Contains a vectorized version of an Interpolatable type.
 final public class IPValue {
@@ -256,15 +319,14 @@ final public class IPValue {
 		case .number: return NSNumber(value: Double(vectors[0]))
 		case .double: return Double(vectors[0])
 		case .integer: return Int(vectors[0])
+		case let .color(colorModel):
+			switch colorModel {
 #if os(macOS)
-		case let .color(colorModel) where colorModel == .rgb: return NSColor(red: vectors[0], green: vectors[1], blue: vectors[2], alpha: vectors[3])
-		case let .color(colorModel) where colorModel == .monochrome: return NSColor(white: vectors[0], alpha: vectors[1])
-		case let .color(colorModel) where colorModel == .hsb: return NSColor(hue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
-#else
-		case let .color(colorModel) where colorModel == .rgb: return UIColor(red: vectors[0], green: vectors[1], blue: vectors[2], alpha: vectors[3])
-		case let .color(colorModel) where colorModel == .monochrome: return UIColor(white: vectors[0], alpha: vectors[1])
-		case let .color(colorModel) where colorModel == .hsb: return UIColor(hue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
+			case .cmyk: return Color(deviceCyan: vectors[0], magenta: vectors[1], yellow: vectors[2], black: vectors[3], alpha: vectors[4])
 #endif // os(macOS)
+			case .hsb: fallthrough
+			default: return Color(hue: vectors[0], saturation: vectors[1], brightness: vectors[2], alpha: vectors[3])
+			}
 		case .edgeInsets: return EdgeInsets(top: vectors[0], left: vectors[1], bottom: vectors[2], right: vectors[3])
 		case .offset: return Offset(horizontal: vectors[0], vertical: vectors[1])
 		case .scnVector3: return SCNVector3(x: vectors[0], y: vectors[1], z: vectors[2])
