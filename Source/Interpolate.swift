@@ -13,6 +13,15 @@ import UIKit
 #endif
 import QuartzCore
 
+////////////////////////////////////////////////////////////
+public protocol InterpolationFunction {
+	/// Applies interpolation function to a given progress value.
+	/// - parameter progress: Actual progress value. CGFloat
+	/// - returns: Adjusted progress value. CGFloat.
+	func apply(_ progress: CGFloat) -> CGFloat
+}
+
+////////////////////////////////////////////////////////////
 /// Interpolate class. Responsible for conducting interpolations.
 open class Interpolate {
 	// MARK: Properties and variables
@@ -30,7 +39,9 @@ open class Interpolate {
 			for index in 0 ..< vectorCount {
 				current.vectors[index] = originValue.vectors[index] + diffVector[index] * adjustedProgress
 			}
-			apply?(current.toInterpolatable())
+			if let value = current.toInterpolatable() {
+				apply?(value)
+			}
 		}
 	}
 
@@ -44,127 +55,42 @@ open class Interpolate {
 	fileprivate var internalProgress: CGFloat = 0.0
 	fileprivate var targetProgress: CGFloat = 0.0
 	fileprivate var apply: ((Interpolatable) -> Void)?
-#if os(macOS)
-	fileprivate var displayLink: CVDisplayLink?
-#else
-	fileprivate var displayLink: CADisplayLink?
-#endif // !os(macOS)
+	fileprivate var displayLink: DisplayLink?
 	// Animation completion handler, called when animate function stops.
 	fileprivate var animationCompletion:(() -> Void)?
 
 	// MARK: Lifecycle
 
-	/**
-	 Initialises an Interpolate object.
-
-	 - parameter values:   Array of interpolatable objects, in order.
-	 - parameter apply:    Apply closure.
-	 - parameter function: Interpolation function (Basic / Spring / Custom).
-
-	 - returns: an Interpolate object.
-	 */
+	/// Initialises an Interpolate object.
+	/// - parameter values:   Array of interpolatable objects, in order.
+	/// - parameter apply:    Apply closure.
+	/// - parameter function: Interpolation function (Basic / Spring / Custom).
+	/// - returns: an Interpolate object.
 	public init<T: Interpolatable>(values: [T], function: InterpolationFunction = BasicInterpolation.linear, apply: @escaping ((T) -> Void)) {
 		assert(values.count >= 2, "You should provide at least two values")
-		let vectorizedValues = values.map { $0.vectorize() }
-		self.values = vectorizedValues
+		self.values = values.map { $0.vectorize() }
+		self.function = function
+
 		self.current = IPValue(value: self.values[0])
 		self.apply = { _ = ($0 as? T).flatMap(apply) }
-		self.function = function
-		self.diffVectors = self.calculateDiff(vectorizedValues)
+		self.diffVectors = calculateDiff(self.values)
 	}
 
-	/**
-	 Initialises an Interpolate object.
-
-	 - parameter from:     Source interpolatable object.
-	 - parameter to:       Target interpolatable object.
-	 - parameter apply:    Apply closure.
-	 - parameter function: Interpolation function (Basic / Spring / Custom).
-
-	 - returns: an Interpolate object.
-	 */
+	/// Initialises an Interpolate object.
+	/// - parameter from:     Source interpolatable object.
+	/// - parameter to:       Target interpolatable object.
+	/// - parameter apply:    Apply closure.
+	/// - parameter function: Interpolation function (Basic / Spring / Custom).
+	/// - returns: an Interpolate object.
 	public convenience init<T: Interpolatable>(from: T, to: T, function: InterpolationFunction = BasicInterpolation.linear, apply: @escaping ((T) -> Void)) {
-		let values = [from, to]
-		self.init(values: values, function: function, apply: apply)
-	}
-
-	/**
-	 Invalidates the apply function
-	 */
-	open func invalidate() {
-		apply = nil
-	}
-
-	// MARK: Animation
-	/**
-	 Animates to a targetProgress with a given duration.
-
-	 - parameter targetProgress: Target progress value. Optional. If left empty assumes 1.0.
-	 - parameter duration:       Duration in seconds. CGFloat.
-	 - parameter completion:     Completion handler. Optional.
-	 */
-	open func animate(_ targetProgress: CGFloat = 1.0, duration: CGFloat, completion: (() -> Void)? = nil) {
-		self.targetProgress = targetProgress
-		self.duration = duration
-		self.animationCompletion = completion
-#if os(macOS)
-		if let displayLink = self.displayLink {
-			CVDisplayLinkStop(displayLink)
-		}
-
-		var newDisplayLink: CVDisplayLink?
-		if kCVReturnSuccess == CVDisplayLinkCreateWithActiveCGDisplays(&newDisplayLink) {
-			CVDisplayLinkSetOutputCallback(newDisplayLink!, { _, _, _, _, _, context in
-    			let object = Unmanaged<Interpolate>.fromOpaque(context!).takeUnretainedValue()
-				object.next()
-				return kCVReturnSuccess
-			}, Unmanaged.passUnretained(self).toOpaque())
-			CVDisplayLinkStart(newDisplayLink!)
-			self.displayLink = newDisplayLink
-		} else {
-			self.displayLink = nil
-		}
-#else
-		displayLink?.invalidate()
-		displayLink = CADisplayLink(target: self, selector: #selector(next))
-		displayLink?.add(to: RunLoop.main, forMode: RunLoopMode.commonModes)
-#endif
-
-	}
-
-	/**
-	 Stops animation.
-	 */
-	open func stopAnimation() {
-#if os(macOS)
-#else
-		displayLink?.invalidate()
-#endif
-		animationCompletion?()
-	}
-
-	/**
-	 Next function used by animation(). Increments progress based on the duration.
-	 */
-	@objc
-	fileprivate func next() {
-		let direction: CGFloat = (targetProgress > progress) ? 1.0 : -1.0
-		progress += 1 / (self.duration * 60) * direction
-		if (direction > 0 && progress >= targetProgress) || (direction < 0 && progress <= targetProgress) {
-			progress = targetProgress
-			stopAnimation()
-		}
+		self.init(values: [from, to], function: function, apply: apply)
 	}
 
 	// MARK: Internal
-	/**
-	 Calculates diff between two IPValues.
-
-	 - parameter from: Source IPValue.
-	 - parameter to:   Target IPValue.
-
-	 - returns: Array of diffs. CGFloat
-	*/
+	/// Calculates diff between two IPValues.
+	/// - parameter from: Source IPValue.
+	/// - parameter to:   Target IPValue.
+	/// - returns: Array of diffs. CGFloat
 	fileprivate func calculateDiff(_ values: [IPValue]) -> [[CGFloat]] {
 		var valuesDiffArray = [[CGFloat]]()
 		for i in 0..<(values.count - 1) {
@@ -180,28 +106,55 @@ open class Interpolate {
 		return valuesDiffArray
 	}
 
-	/**
-	 Adjusted progress using interpolation function.
-
-	 - parameter progressValue: Actual progress value. CGFloat.
-
-	 - returns: Adjusted progress value. CGFloat.
-	 */
+	/// Adjusted progress using interpolation function.
+	/// - parameter progressValue: Actual progress value. CGFloat.
+	/// - returns: Adjusted progress value. CGFloat.
 	fileprivate func internalAdjustedProgress(_ progressValue: CGFloat) -> CGFloat {
 		return function.apply(progressValue)
 	}
-}
 
-/**
- *  Interpolation function. Must implement an application function.
- */
-public protocol InterpolationFunction {
-	/**
-	 Applies interpolation function to a given progress value.
+	/// Invalidates the apply function
+	open func invalidate() {
+		self.apply = nil
+	}
 
-	 - parameter progress: Actual progress value. CGFloat
+	// MARK: Animation
+	/// Animates to a targetProgress with a given duration.
+	/// - parameter targetProgress: Target progress value. Optional. If left empty assumes 1.0.
+	/// - parameter duration:       Duration in seconds. CGFloat.
+	/// - parameter completion:     Completion handler. Optional.
+	open func animate(_ targetProgress: CGFloat = 1.0, duration: CGFloat, completion: (() -> Void)? = nil) {
+		self.targetProgress = targetProgress
+		self.duration = duration
+		self.animationCompletion = completion
+		self.displayLink?.stop()
+		self.displayLink? = DisplayLink(action: next)
+		self.displayLink?.start()
+	}
 
-	 - returns: Adjusted progress value. CGFloat.
-	 */
-	func apply(_ progress: CGFloat) -> CGFloat
+	/// Stops animation.
+	open func stopAnimation() {
+		self.displayLink?.stop()
+		self.animationCompletion?()
+	}
+
+	/// Next function used by animation(). Increments progress based on the duration.
+	fileprivate func next() {
+		let direction: CGFloat = (targetProgress > progress) ? 1.0 : -1.0
+		progress += 1 / (self.duration * 60) * direction
+		if (direction > 0 && progress >= targetProgress) || (direction < 0 && progress <= targetProgress) {
+			progress = targetProgress
+			stopAnimation()
+		}
+	}
+#if os(macOS)
+	@objc
+	fileprivate func next(displayLink: CVDisplayLink, timeStamp: UnsafePointer<CVTimeStamp>, targetTimeStamp: UnsafePointer<CVTimeStamp>) {
+		next()
+	}
+#else
+	fileprivate func next(displayLink: CADisplayLink, timeStamp: TimeInterval, targetTimeStamp: TimeInterval) -> Void {
+		next()
+	}
+#endif
 }
