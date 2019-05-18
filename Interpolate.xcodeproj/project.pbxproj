@@ -75,11 +75,10 @@
 		E1838C18226DA48F006307C3 = {
 			isa = PBXGroup;
 			children = (
+				E1E6BC18226DB85A0058E872 /* .swiftlint.yml */,
 				E1838C24226DA48F006307C3 /* Source */,
 				E1838C2F226DA48F006307C3 /* Tests */,
 				E1455A2B226DB1DC00B10FC9 /* Misc */,
-				E1E6BC18226DB85A0058E872 /* .swiftlint.yml */,
-				E1838C3C226DA6BD006307C3 /* External */,
 				E1838C23226DA48F006307C3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,13 +111,6 @@
 				E10CAC36226E01380019392C /* InterpolateTests.swift */,
 			);
 			path = Tests;
-			sourceTree = "<group>";
-		};
-		E1838C3C226DA6BD006307C3 /* External */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = External;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
